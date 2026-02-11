@@ -1,4 +1,4 @@
-# kombu-gevent-issue
+# kombu-gevent-issue (issue-2463)
 
 > `ignore_errors()` does not catch gevent's `ConcurrentObjectUseError` during connection close, causing Celery worker crash
 
