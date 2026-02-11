@@ -1,0 +1,53 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5671:5671"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./tls:/tls:ro
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  worker:
+    build: .
+    command: uv run celery -A config.celery worker -P gevent -c 4 -Q gevent --loglevel=info --without-gossip --without-mingle
+    environment:
+      CELERY_BROKER_URL: amqps://guest:guest@rabbitmq:5671//
+    volumes:
+      - ./tls/ca-cert.pem:/tls/ca-cert.pem:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    profiles:
+      - worker
+
+  trigger:
+    build: .
+    entrypoint: ["uv", "run", "python", "manage.py", "shell", "-c"]
+    command: ["from app.tasks import generate_load; generate_load.delay(count=20, duration=30); print('Dispatched 20 tasks')"]
+    environment:
+      CELERY_BROKER_URL: amqps://guest:guest@rabbitmq:5671//
+    volumes:
+      - ./tls/ca-cert.pem:/tls/ca-cert.pem:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    profiles:
+      - trigger
+
+  reproduce:
+    build: .
+    command: uv run python reproduce.py
+    volumes:
+      - ./tls/ca-cert.pem:/tls/ca-cert.pem:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
